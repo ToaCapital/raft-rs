@@ -88,6 +88,11 @@ fn new_raw_node_with_config(
 }
 
 /// Ensures that RawNode::step ignore local message.
+// `ConfState` lists come out in hash-set order, so compare them as sets.
+fn assert_conf_state_eq(lhs: &ConfState, rhs: &ConfState) {
+    assert!(conf_state_eq(lhs, rhs), "{:?} != {:?}", lhs, rhs);
+}
+
 #[test]
 fn test_raw_node_step() {
     let l = default_logger();
@@ -320,7 +325,7 @@ fn test_raw_node_propose_and_conf_change() {
             assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChangeV2);
         }
         assert_eq!(ccdata, entries[1].get_data());
-        assert_eq!(exp, cs.unwrap());
+        assert_conf_state_eq(&exp, &cs.unwrap());
 
         let conf_index = if cc.as_v2().enter_joint() == Some(true) {
             // If this is an auto-leaving joint conf change, it will have
@@ -366,7 +371,7 @@ fn test_raw_node_propose_and_conf_change() {
         // Lie and pretend the ConfChange applied. It won't do so because now
         // we require the joint quorum and we're only running one node.
         let cs = raw_node.apply_conf_change(&leave_cc).unwrap();
-        assert_eq!(cs, exp2.unwrap());
+        assert_conf_state_eq(&cs, &exp2.unwrap());
     }
 }
 
@@ -441,7 +446,7 @@ fn test_raw_node_joint_auto_leave() {
     assert_eq!(entries[0].get_data(), b"somedata");
     assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChangeV2);
     assert_eq!(ccdata, entries[1].get_data());
-    assert_eq!(exp_cs, cs.unwrap());
+    assert_conf_state_eq(&exp_cs, &cs.unwrap());
     assert_eq!(0, raw_node.raft.pending_conf_index);
 
     // Move the RawNode along. It should not leave joint because it's follower.
@@ -472,7 +477,7 @@ fn test_raw_node_joint_auto_leave() {
     // Lie and pretend the ConfChange applied. It won't do so because now
     // we require the joint quorum and we're only running one node.
     let cs = raw_node.apply_conf_change(&leave_cc).unwrap();
-    assert_eq!(cs, exp_cs2);
+    assert_conf_state_eq(&cs, &exp_cs2);
 }
 
 /// Ensures that two proposes to add the same node should not affect the later propose
