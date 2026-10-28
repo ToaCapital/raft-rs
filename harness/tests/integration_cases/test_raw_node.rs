@@ -1983,3 +1983,41 @@ impl Storage for IgnoreSizeHintMemStorage {
         self.inner.snapshot(request_index, to)
     }
 }
+
+// Every randomized election timeout, the first one drawn during construction included, comes
+// from the injected generator: a second generator with the same seed predicts each draw.
+#[test]
+fn test_raw_node_with_rng_draws_election_timeouts_from_it() {
+    use rand::rngs::StdRng;
+    use rand::{Rng, SeedableRng};
+
+    let l = default_logger();
+    let config = new_test_config(1, 10, 1);
+    let range = config.min_election_tick()..config.max_election_tick();
+    for seed in 0..8 {
+        let s = MemStorage::new_with_conf_state((vec![1], vec![]));
+        let rng = Box::new(StdRng::seed_from_u64(seed));
+        let mut raw_node = RawNode::new_with_rng(&config, s, &l, rng).unwrap();
+        let mut oracle = StdRng::seed_from_u64(seed);
+        assert_eq!(
+            raw_node.raft.randomized_election_timeout(),
+            oracle.random_range(range.clone()),
+            "seed {seed}: first draw"
+        );
+        for draw in 1..50 {
+            raw_node.raft.reset_randomized_election_timeout();
+            assert_eq!(
+                raw_node.raft.randomized_election_timeout(),
+                oracle.random_range(range.clone()),
+                "seed {seed}: draw {draw}"
+            );
+        }
+    }
+}
+
+// The generator is held as `Box<dyn RngCore + Send>`, so a node can still move between threads.
+#[test]
+fn test_raw_node_stays_send() {
+    fn assert_send<T: Send>() {}
+    assert_send::<RawNode<MemStorage>>();
+}

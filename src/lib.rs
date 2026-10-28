@@ -518,8 +518,8 @@ mod tracker;
 pub mod util;
 
 pub use crate::raft::{
-    vote_resp_msg_type, Raft, SoftState, StateRole, CAMPAIGN_ELECTION, CAMPAIGN_PRE_ELECTION,
-    CAMPAIGN_TRANSFER, INVALID_ID, INVALID_INDEX,
+    vote_resp_msg_type, ElectionRng, Raft, SoftState, StateRole, CAMPAIGN_ELECTION,
+    CAMPAIGN_PRE_ELECTION, CAMPAIGN_TRANSFER, INVALID_ID, INVALID_INDEX,
 };
 pub use confchange::{Changer, MapChange};
 pub use config::Config;
