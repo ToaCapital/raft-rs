@@ -26,7 +26,7 @@ default-logger = ["slog-stdlog", "slog-envlogger", "slog-term"]
 # Make sure to synchronize updates with Harness.
 [dependencies]
 bytes = {  version = "1.11", optional = true }
-fxhash = "0.2.1"
+rustc-hash = "2"
 fail = { version = "0.4", optional = true }
 getset = "0.1.1"
 thiserror = "1.0"
