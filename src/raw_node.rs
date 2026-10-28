@@ -308,6 +308,24 @@ impl<T: Storage> RawNode<T> {
     pub fn new(config: &Config, store: T, logger: &Logger) -> Result<Self> {
         assert_ne!(config.id, 0, "config.id must not be zero");
         let r = Raft::new(config, store, logger)?;
+        Ok(Self::from_raft(config, r))
+    }
+
+    #[allow(clippy::new_ret_no_self)]
+    /// Create a new RawNode whose randomized election timeouts are drawn from `election_rng`.
+    /// See [`ElectionRng`](crate::ElectionRng).
+    pub fn new_with_rng(
+        config: &Config,
+        store: T,
+        logger: &Logger,
+        election_rng: crate::ElectionRng,
+    ) -> Result<Self> {
+        assert_ne!(config.id, 0, "config.id must not be zero");
+        let r = Raft::new_with_rng(config, store, logger, election_rng)?;
+        Ok(Self::from_raft(config, r))
+    }
+
+    fn from_raft(config: &Config, r: Raft<T>) -> Self {
         let mut rn = RawNode {
             raft: r,
             prev_hs: Default::default(),
@@ -323,7 +341,7 @@ impl<T: Storage> RawNode<T> {
             "RawNode created with id {id}.",
             id = rn.raft.id
         );
-        Ok(rn)
+        rn
     }
 
     /// Create a new RawNode given some [`Config`] and the default logger.

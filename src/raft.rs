@@ -23,7 +23,7 @@ use crate::eraftpb::{
 };
 use raft_proto::protocompat::*;
 use raft_proto::ConfChangeI;
-use rand::Rng;
+use rand::{Rng, RngCore};
 use slog::Logger;
 
 #[cfg(feature = "failpoints")]
@@ -151,6 +151,30 @@ impl UncommittedState {
     }
 }
 
+/// The source the randomized election timeout is drawn from.
+///
+/// [`Raft::new`] draws from `rand::rng()`. Pass a seeded generator to
+/// [`Raft::new_with_rng`] or [`RawNode::new_with_rng`](crate::RawNode::new_with_rng)
+/// to make elections reproducible, for example in a deterministic simulation.
+pub type ElectionRng = Box<dyn RngCore + Send>;
+
+/// The default [`ElectionRng`]: each draw comes from the thread-local `rand::rng()`.
+struct ThreadElectionRng;
+
+impl RngCore for ThreadElectionRng {
+    fn next_u32(&mut self) -> u32 {
+        rand::rng().next_u32()
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        rand::rng().next_u64()
+    }
+
+    fn fill_bytes(&mut self, dst: &mut [u8]) {
+        rand::rng().fill_bytes(dst)
+    }
+}
+
 /// The core struct of raft consensus.
 ///
 /// It's a helper struct to get around rust borrow checks.
@@ -244,6 +268,7 @@ pub struct RaftCore<T: Storage> {
     randomized_election_timeout: usize,
     min_election_timeout: usize,
     max_election_timeout: usize,
+    election_rng: ElectionRng,
 
     /// The logger for the raft structure.
     pub(crate) logger: slog::Logger,
@@ -320,6 +345,18 @@ impl<T: Storage> Raft<T> {
     /// Creates a new raft for use on the node.
     #[allow(clippy::new_ret_no_self)]
     pub fn new(c: &Config, store: T, logger: &Logger) -> Result<Self> {
+        Self::new_with_rng(c, store, logger, Box::new(ThreadElectionRng))
+    }
+
+    /// Creates a new raft whose randomized election timeouts are drawn from `election_rng`,
+    /// including the first one, which is drawn during construction.
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new_with_rng(
+        c: &Config,
+        store: T,
+        logger: &Logger,
+        election_rng: ElectionRng,
+    ) -> Result<Self> {
         c.validate()?;
         let logger = logger.new(o!("raft_id" => c.id));
         let raft_state = store.initial_state()?;
@@ -354,6 +391,7 @@ impl<T: Storage> Raft<T> {
                 randomized_election_timeout: Default::default(),
                 min_election_timeout: c.min_election_tick(),
                 max_election_timeout: c.max_election_tick(),
+                election_rng,
                 skip_bcast_commit: c.skip_bcast_commit,
                 batch_append: c.batch_append,
                 logger,
@@ -2853,8 +2891,8 @@ impl<T: Storage> Raft<T> {
     /// Regenerates and stores the election timeout.
     pub fn reset_randomized_election_timeout(&mut self) {
         let prev_timeout = self.randomized_election_timeout;
-        let timeout =
-            rand::rng().random_range(self.min_election_timeout..self.max_election_timeout);
+        let range = self.min_election_timeout..self.max_election_timeout;
+        let timeout = self.election_rng.random_range(range);
         debug!(
             self.logger,
             "reset election timeout {prev_timeout} -> {timeout} at {election_elapsed}",
